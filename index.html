@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>3D FPS Game</title>
+
+<style>
+body{
+margin:0;
+overflow:hidden;
+background:black;
+}
+
+canvas{display:block;}
+
+/* UI */
+#ui{
+position:absolute;
+top:10px;
+left:10px;
+color:white;
+font-family:Arial;
+z-index:10;
+}
+
+/* weapon */
+#weapon{
+position:absolute;
+bottom:0;
+right:0;
+width:420px;
+pointer-events:none;
+z-index:20;
+}
+
+/* crosshair */
+#crosshair{
+position:absolute;
+top:50%;
+left:50%;
+width:10px;
+height:10px;
+transform:translate(-50%,-50%);
+z-index:30;
+}
+
+#crosshair:before,
+#crosshair:after{
+content:"";
+position:absolute;
+background:white;
+}
+
+#crosshair:before{
+width:10px;
+height:2px;
+top:4px;
+left:0;
+}
+
+#crosshair:after{
+width:2px;
+height:10px;
+top:0;
+left:4px;
+}
+
+/* MENU */
+#menu{
+position:absolute;
+inset:0;
+background:rgba(0,0,0,0.9);
+display:flex;
+flex-direction:column;
+justify-content:center;
+align-items:center;
+color:white;
+z-index:100;
+}
+
+button{
+padding:15px 30px;
+font-size:20px;
+cursor:pointer;
+margin-top:10px;
+}
+
+/* LEADERBOARD */
+#leaderboard{
+margin-top:20px;
+font-size:18px;
+opacity:0.8;
+}
+</style>
+</head>
+
+<body>
+
+<!-- MENU -->
+<div id="menu">
+<h1>FPS GAME</h1>
+<button onclick="startGame()">PLAY</button>
+
+<div id="leaderboard">
+<h3>Leaderboard (Local)</h3>
+<div id="lb">No scores yet</div>
+</div>
+</div>
+
+<!-- UI -->
+<div id="ui">
+Score: <span id="score">0</span><br>
+Highscore: <span id="highscore">0</span><br>
+Health: <span id="health">100</span>
+</div>
+
+<img id="weapon" src="textures/WeaponPNG.png">
+<div id="crosshair"></div>
+
+<script type="module">
+
+import * as THREE from "https://unpkg.com/three@0.165.0/build/three.module.js";
+
+/* ================= STATE ================= */
+let gameStarted = false;
+
+let score = 0;
+let highscore = localStorage.getItem("highscore") || 0;
+let health = 100;
+
+document.getElementById("highscore").innerText = highscore;
+
+/* leaderboard */
+let leaderboard = JSON.parse(localStorage.getItem("lb") || "[]");
+updateLeaderboardUI();
+
+/* ================= SCENE ================= */
+const scene = new THREE.Scene();
+
+const camera = new THREE.PerspectiveCamera(
+75,
+window.innerWidth/window.innerHeight,
+0.1,
+1000
+);
+
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setSize(window.innerWidth,window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+
+camera.position.y = 2;
+
+/* LIGHT */
+const light = new THREE.DirectionalLight(0xffffff,2);
+light.position.set(5,10,5);
+scene.add(light);
+
+/* FLOOR */
+const floor = new THREE.Mesh(
+new THREE.PlaneGeometry(200,200),
+new THREE.MeshStandardMaterial({color:0x222222})
+);
+floor.rotation.x = -Math.PI/2;
+scene.add(floor);
+
+/* ================= INPUT ================= */
+const keys = {};
+
+document.addEventListener("keydown",(e)=>{
+keys[e.key.toLowerCase()] = true;
+
+if(e.code==="Space"){
+e.preventDefault();
+shoot();
+}
+});
+
+document.addEventListener("keyup",(e)=>{
+keys[e.key.toLowerCase()] = false;
+});
+
+document.body.addEventListener("click",()=>{
+if(gameStarted){
+document.body.requestPointerLock();
+shoot();
+}
+});
+
+/* ================= MOUSE ================= */
+let yaw = 0;
+let pitch = 0;
+
+document.addEventListener("mousemove",(e)=>{
+if(document.pointerLockElement && gameStarted){
+
+yaw -= e.movementX * 0.002;
+pitch -= e.movementY * 0.002;
+
+pitch = Math.max(-1.5,Math.min(1.5,pitch));
+
+camera.rotation.order = "YXZ";
+camera.rotation.y = yaw;
+camera.rotation.x = pitch;
+}
+});
+
+/* ================= ENEMIES ================= */
+const enemies = [];
+
+const enemyTexture = new THREE.TextureLoader().load(
+"textures/WarriorPNG.png"
+);
+
+function spawnEnemy(){
+
+const enemy = new THREE.Sprite(
+new THREE.SpriteMaterial({
+map: enemyTexture,
+transparent:true,
+depthTest:true   /* FIX: hides behind walls */
+})
+);
+
+enemy.scale.set(2.5,3.5,1);
+
+enemy.position.set(
+(Math.random()-0.5)*50,
+1.5,
+-20 - Math.random()*40
+);
+
+scene.add(enemy);
+enemies.push(enemy);
+}
+
+setInterval(()=>{
+if(gameStarted && enemies.length < 12){
+spawnEnemy();
+}
+},2000);
+
+/* ================= WALLS ================= */
+const walls = [];
+
+function spawnWall(){
+
+const wall = new THREE.Mesh(
+new THREE.BoxGeometry(
+1 + Math.random()*4,
+2 + Math.random()*5,
+1 + Math.random()*4
+),
+new THREE.MeshStandardMaterial({color:0x444444})
+);
+
+wall.position.set(
+(Math.random()-0.5)*80,
+1,
+-10 - Math.random()*60
+);
+
+scene.add(wall);
+walls.push(wall);
+}
+
+for(let i=0;i<25;i++){
+spawnWall();
+}
+
+/* ================= BULLETS ================= */
+const bullets = [];
+
+function shoot(){
+
+if(!gameStarted) return;
+
+const bullet = new THREE.Mesh(
+new THREE.SphereGeometry(0.08,8,8),
+new THREE.MeshBasicMaterial({color:0xffff00})
+);
+
+bullet.position.copy(camera.position);
+
+bullet.dir = new THREE.Vector3();
+camera.getWorldDirection(bullet.dir);
+
+scene.add(bullet);
+bullets.push(bullet);
+}
+
+/* ================= GAME START ================= */
+window.startGame = function(){
+gameStarted = true;
+
+score = 0;
+health = 100;
+
+document.getElementById("menu").style.display = "none";
+updateUI();
+}
+
+/* ================= GAME OVER ================= */
+function gameOver(){
+
+gameStarted = false;
+
+leaderboard.push(score);
+leaderboard.sort((a,b)=>b-a);
+leaderboard = leaderboard.slice(0,5);
+
+localStorage.setItem("lb",JSON.stringify(leaderboard));
+
+updateLeaderboardUI();
+
+document.getElementById("menu").style.display = "flex";
+
+alert("Game Over! Score: " + score);
+location.reload();
+}
+
+/* ================= LOOP ================= */
+function animate(){
+
+requestAnimationFrame(animate);
+
+if(!gameStarted){
+renderer.render(scene,camera);
+return;
+}
+
+const speed = keys["shift"] ? 0.25 : 0.15;
+
+/* movement (no fly) */
+const forward = new THREE.Vector3();
+camera.getWorldDirection(forward);
+forward.y = 0;
+forward.normalize();
+
+const right = new THREE.Vector3();
+right.crossVectors(forward,camera.up).normalize();
+
+if(keys["w"]) camera.position.addScaledVector(forward,speed);
+if(keys["s"]) camera.position.addScaledVector(forward,-speed);
+if(keys["a"]) camera.position.addScaledVector(right,-speed);
+if(keys["d"]) camera.position.addScaledVector(right,speed);
+
+/* bullets */
+for(let i=bullets.length-1;i>=0;i--){
+
+const b = bullets[i];
+b.position.add(b.dir.clone().multiplyScalar(0.7));
+
+/* hit enemies */
+for(let j=enemies.length-1;j>=0;j--){
+if(b.position.distanceTo(enemies[j].position) < 1){
+
+scene.remove(enemies[j]);
+enemies.splice(j,1);
+
+scene.remove(b);
+bullets.splice(i,1);
+
+score += 10;
+updateUI();
+break;
+}
+}
+
+/* hit walls */
+for(const w of walls){
+if(b.position.distanceTo(w.position) < 1.5){
+scene.remove(b);
+bullets.splice(i,1);
+break;
+}
+}
+}
+
+/* enemies chase */
+for(let i=enemies.length-1;i>=0;i--){
+
+const e = enemies[i];
+
+const dir = new THREE.Vector3(
+camera.position.x - e.position.x,
+0,
+camera.position.z - e.position.z
+).normalize();
+
+e.position.add(dir.multiplyScalar(0.04));
+
+if(e.position.distanceTo(camera.position) < 1.5){
+
+health -= 0.5;
+updateUI();
+
+if(health <= 0){
+gameOver();
+}
+}
+}
+
+renderer.render(scene,camera);
+}
+
+animate();
+
+/* ================= UI ================= */
+function updateUI(){
+
+document.getElementById("score").innerText = score;
+document.getElementById("highscore").innerText = highscore;
+document.getElementById("health").innerText = Math.floor(health);
+}
+
+/* leaderboard */
+function updateLeaderboardUI(){
+
+const lb = document.getElementById("lb");
+
+if(leaderboard.length === 0){
+lb.innerText = "No scores yet";
+return;
+}
+
+lb.innerHTML = leaderboard.map((s,i)=>`#${i+1} ${s}`).join("<br>");
+}
+
+/* ================= RESIZE ================= */
+window.addEventListener("resize",()=>{
+camera.aspect = window.innerWidth/window.innerHeight;
+camera.updateProjectionMatrix();
+renderer.setSize(window.innerWidth,window.innerHeight);
+});
+
+</script>
+
+</body>
+</html>
