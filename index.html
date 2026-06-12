@@ -224,65 +224,28 @@ floor.rotation.x = -Math.PI/2;
 scene.add(floor);
 
 /* ================= INPUT ================= */
-let grenades = 0;
-const grenadePickups = [];
 
 const keys = {};
 let velocityY = 0;
 let onGround = true;
 
-function spawnGrenadePickup(){
-
-const pickup = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.5,0.5,0.2,20),
-    new THREE.MeshStandardMaterial({
-        color:0x006600
-    })
-);
-
-pickup.position.set(
-    (Math.random()-0.5)*100,
-    0.2,
-    (Math.random()-0.5)*100
-);
-
-scene.add(pickup);
-grenadePickups.push(pickup);
-
-}
-pickup.position.set(
-(Math.random()-0.5)*100,
-0.2,
-(Math.random()-0.5)*100
-);
-
-scene.add(pickup);
-grenadePickups.push(pickup);
-
-}
-
 document.addEventListener("keydown",(e)=>{
 
 keys[e.key.toLowerCase()] = true;
 
-
-
-for(let i=0;i<10;i++){
-spawnGrenadePickup();
 /* SHOOT */
 if(e.key.toLowerCase() === "f"){
 shoot();
 }
 
 /* JUMP */
-if(e.key.toLowerCase() === "g"){
-    throwGrenade();
+if(e.code === "Space" && onGround){
+
+velocityY = 0.25;
+onGround = false;
+
 }
 
-if(e.code === "Space" && onGround){
-    velocityY = 0.25;
-    onGround = false;
-}
 });
 
 document.addEventListener("keyup",(e)=>{
@@ -313,9 +276,8 @@ camera.rotation.x = pitch;
 });
 
 /* ================= ENEMIES ================= */
-let boss = null;
 const enemies = [];
-const flyingEnemies = [];
+
 const enemyTexture = new THREE.TextureLoader().load(
 "textures/WarriorPNG.png"
 );
@@ -341,87 +303,13 @@ enemy.position.set(
 scene.add(enemy);
 enemies.push(enemy);
 }
-function spawnFlyingEnemy(){
 
-const enemy = new THREE.Sprite(
-new THREE.SpriteMaterial({
-map: enemyTexture,
-transparent:true,
-depthTest:true
-})
-);
-
-enemy.scale.set(2.5,3.5,1);
-
-enemy.position.set(
-(Math.random()-0.5)*50,
-6 + Math.random()*4,
--20 - Math.random()*40
-);
-
-scene.add(enemy);
-flyingEnemies.push(enemy);
-
-}
 setInterval(()=>{
 if(gameStarted && enemies.length < 12){
 spawnEnemy();
 }
 },2000);
-setInterval(()=>{
-if(gameStarted && flyingEnemies.length < 5){
-spawnFlyingEnemy();
-}
-},5000);
-/* ================= BOSS ================= */
 
-function spawnBoss(){
-
-boss = new THREE.Mesh(
-new THREE.BoxGeometry(8,8,8),
-new THREE.MeshStandardMaterial({
-color:0x550000
-})
-);
-
-boss.health = 100;
-
-boss.position.set(
-0,
-4,
--80
-);
-
-scene.add(boss);
-
-}
-/* ================= GRENADES ================= */
-
-function spawnGrenadePickup(){
-
-const pickup = new THREE.Mesh(
-new THREE.CylinderGeometry(0.5,0.5,0.2,20),
-new THREE.MeshStandardMaterial({
-color:0x006600
-})
-);
-
-pickup.position.set(
-(Math.random()-0.5)*100,
-0.2,
-(Math.random()-0.5)*100
-);
-
-scene.add(pickup);
-grenadePickups.push(pickup);
-
-}
-
-/* spawn 10 pickups */
-
-for(let i=0;i<10;i++){
-spawnGrenadePickup();
-}
 /* ================= WALLS ================= */
 const walls = [];
 
@@ -488,71 +376,7 @@ camera.getWorldDirection(bullet.dir);
 scene.add(bullet);
 bullets.push(bullet);
 }
-function throwGrenade(){
 
-if(grenades <= 0) return;
-
-grenades--;
-
-const pos = camera.position.clone();
-
-const dir = new THREE.Vector3();
-camera.getWorldDirection(dir);
-
-pos.add(dir.multiplyScalar(8));
-
-/* normal enemies */
-
-for(let i=enemies.length-1;i>=0;i--){
-
-if(pos.distanceTo(enemies[i].position) < 10){
-
-scene.remove(enemies[i]);
-enemies.splice(i,1);
-
-score += 20;
-
-}
-}
-
-/* flying enemies */
-
-for(let i=flyingEnemies.length-1;i>=0;i--){
-
-if(pos.distanceTo(flyingEnemies[i].position) < 10){
-
-scene.remove(flyingEnemies[i]);
-flyingEnemies.splice(i,1);
-
-score += 30;
-
-}
-}
-
-/* boss damage */
-
-if(boss){
-
-if(pos.distanceTo(boss.position) < 15){
-
-boss.health -= 25;
-
-if(boss.health <= 0){
-
-scene.remove(boss);
-
-boss = null;
-
-score += 500;
-
-}
-
-}
-}
-
-updateUI();
-
-}
 /* ================= GAME START ================= */
 window.startGame = function(){
 gameStarted = true;
@@ -608,8 +432,6 @@ camera.getWorldDirection(forward);
 forward.y = 0;
 forward.normalize();
 
-}
-
 const right = new THREE.Vector3();
 right.crossVectors(forward,camera.up).normalize();
 
@@ -630,37 +452,13 @@ newPos.addScaledVector(right,speed);
 if(!collidesWithWall(newPos)){
 camera.position.copy(newPos);
 }
-for(let i=grenadePickups.length-1;i>=0;i--){
+
 /* bullets */
 for(let i=bullets.length-1;i>=0;i--){
 
 const b = bullets[i];
 b.position.add(b.dir.clone().multiplyScalar(0.7));
 
-
-if(boss){
-
-if(b.position.distanceTo(boss.position) < 5){
-
-boss.health -= 10;
-
-scene.remove(b);
-bullets.splice(i,1);
-
-if(boss.health <= 0){
-
-scene.remove(boss);
-
-boss = null;
-
-score += 500;
-
-updateUI();
-
-}
-}
-
-}
 /* hit enemies */
 for(let j=enemies.length-1;j>=0;j--){
 if(b.position.distanceTo(enemies[j].position) < 1){
@@ -674,7 +472,7 @@ bullets.splice(i,1);
 score += 10;
 updateUI();
 break;
-
+}
 }
 
 /* hit walls */
@@ -686,38 +484,8 @@ break;
 }
 }
 }
-/* spawn boss */
 
-if(score >= 200 && !boss){
-spawnBoss();
-}
-
-/* boss AI */
-
-if(boss){
-
-const dir = new THREE.Vector3(
-camera.position.x - boss.position.x,
-0,
-camera.position.z - boss.position.z
-).normalize();
-
-boss.position.add(
-dir.multiplyScalar(0.02)
-);
-
-if(boss.position.distanceTo(camera.position) < 4){
-
-health -= 2;
-
-if(health <= 0){
-gameOver();
-}
-
-}
-}
 /* enemies chase */
-
 for(let i=enemies.length-1;i>=0;i--){
 
 const e = enemies[i];
@@ -740,99 +508,10 @@ gameOver();
 }
 }
 }
-for(let i=flyingEnemies.length-1;i>=0;i--){
 
-const e = flyingEnemies[i];
-
-const dir = new THREE.Vector3(
-camera.position.x - e.position.x,
-camera.position.y + 2 - e.position.y,
-camera.position.z - e.position.z
-).normalize();
-
-e.position.add(dir.multiplyScalar(0.05));
-
-if(e.position.distanceTo(camera.position) < 2){
-
-health -= 1;
-
-if(health <= 0){
-gameOver();
-}
-
-}
-}
-/* pickup grenades */
-
-for(let i=grenadePickups.length-1;i>=0;i--){
-
-const g = grenadePickups[i];
-
-if(g.position.distanceTo(camera.position) < 2){
-
-grenades++;
-
-scene.remove(g);
-grenadePickups.splice(i,1);
-
-}
-}
 renderer.render(scene,camera);
 }
 
-
-const g = grenadePickups[i];
-
-if(g.position.distanceTo(camera.position) < 2){
-
-grenades++;
-
-scene.remove(g);
-grenadePickups.splice(i,1);
-
-}
-}
-
-function throwGrenade(){
-
-if(grenades <= 0) return;
-
-grenades--;
-
-const pos = camera.position.clone();
-
-const dir = new THREE.Vector3();
-camera.getWorldDirection(dir);
-
-pos.add(dir.multiplyScalar(8));
-
-for(let i=enemies.length-1;i>=0;i--){
-
-if(pos.distanceTo(enemies[i].position) < 10){
-
-scene.remove(enemies[i]);
-enemies.splice(i,1);
-
-score += 20;
-
-}
-}
-
-for(let i=flyingEnemies.length-1;i>=0;i--){
-
-if(pos.distanceTo(flyingEnemies[i].position) < 10){
-
-scene.remove(flyingEnemies[i]);
-flyingEnemies.splice(i,1);
-
-score += 30;
-
-}
-}
-
-updateUI();
-
-}
 animate();
 
 /* ================= UI ================= */
