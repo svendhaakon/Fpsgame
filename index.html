@@ -102,11 +102,15 @@ opacity:0.8;
 <button onclick="startGame()">PLAY</button>
 
 <div id="leaderboard">
-<h3>Leaderboard (Local)</h3>
-<div id="lb">No scores yet</div>
-</div>
-</div>
 
+<h3>Global Leaderboard</h3>
+<div id="lb">Loading...</div>
+
+<h3>Players Online</h3>
+<div id="playersOnline">Loading...</div>
+
+</div>
+</div>
 <!-- UI -->
 <div id="ui">
 Score: <span id="score">0</span><br>
@@ -118,9 +122,54 @@ Health: <span id="health">100</span>
 <div id="crosshair"></div>
 
 <script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
 
+import {
+getDatabase,
+ref,
+set,
+push,
+onValue,
+onDisconnect
+} from "https://www.gstatic.com/firebasejs/12.14.0/firebase-database.js";
 import * as THREE from "https://unpkg.com/three@0.165.0/build/three.module.js";
+/* ================= FIREBASE ================= */
 
+const firebaseConfig = {
+  apiKey: "AIzaSyC4ZWLa3wZVC62LOf6a2tkIvfv0QaAjUrI",
+  authDomain: "fpsgame-91746.firebaseapp.com",
+  databaseURL: "https://fpsgame-91746-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "fpsgame-91746",
+  storageBucket: "fpsgame-91746.firebasestorage.app",
+  messagingSenderId: "445818341744",
+  appId: "1:445818341744:web:652dee1e4e4c84f65467b5"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+/* PLAYER NAME */
+
+let playerName = localStorage.getItem("playerName");
+
+if(!playerName){
+playerName = prompt("Enter your name:");
+if(!playerName) playerName = "Player";
+localStorage.setItem("playerName", playerName);
+}
+
+const playerId = crypto.randomUUID();
+
+/* ONLINE PLAYERS */
+
+set(ref(db,"players/"+playerId),{
+name:playerName,
+joined:Date.now()
+});
+
+onDisconnect(
+ref(db,"players/"+playerId)
+).remove();
 /* ================= STATE ================= */
 let gameStarted = false;
 
@@ -130,9 +179,6 @@ let health = 100;
 
 document.getElementById("highscore").innerText = highscore;
 
-/* leaderboard */
-let leaderboard = JSON.parse(localStorage.getItem("lb") || "[]");
-updateLeaderboardUI();
 
 /* ================= SCENE ================= */
 const scene = new THREE.Scene();
@@ -312,7 +358,11 @@ leaderboard = leaderboard.slice(0,5);
 localStorage.setItem("lb",JSON.stringify(leaderboard));
 
 updateLeaderboardUI();
-
+push(ref(db,"leaderboard"),{
+name:playerName,
+score:score,
+time:Date.now()
+});
 document.getElementById("menu").style.display = "flex";
 
 alert("Game Over! Score: " + score);
@@ -426,7 +476,39 @@ return;
 
 lb.innerHTML = leaderboard.map((s,i)=>`#${i+1} ${s}`).join("<br>");
 }
+/* ================= ONLINE PLAYERS ================= */
 
+onValue(ref(db,"players"),(snap)=>{
+
+const data = snap.val() || {};
+
+document.getElementById("playersOnline").innerHTML =
+Object.values(data)
+.map(p=>p.name)
+.join("<br>");
+
+});
+
+/* ================= GLOBAL LEADERBOARD ================= */
+
+onValue(ref(db,"leaderboard"),(snap)=>{
+
+const data = snap.val();
+
+if(!data) return;
+
+let scores = Object.values(data);
+
+scores.sort((a,b)=>b.score-a.score);
+
+scores = scores.slice(0,10);
+
+document.getElementById("lb").innerHTML =
+scores
+.map((p,i)=>`#${i+1} ${p.name} - ${p.score}`)
+.join("<br>");
+
+});
 /* ================= RESIZE ================= */
 window.addEventListener("resize",()=>{
 camera.aspect = window.innerWidth/window.innerHeight;
